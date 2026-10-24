@@ -1,0 +1,44 @@
+[project]
+name = "graph-microsoft"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    # Microsoft Entra credentials used to authenticate Graph requests.
+    "azure-identity==1.26.0",
+    # Typed Microsoft Graph client for SharePoint site and file API calls.
+    "msgraph-sdk==1.65.0",
+]
+
+[dependency-groups]
+dev = [
+    # Static type checking.
+    "mypy==2.4.0",
+    # Installable local Git hooks for linting and test runs.
+    "pre-commit==4.7.0",
+    # Automated tests.
+    "pytest==9.1.1",
+    # Python linting, formatting, and McCabe complexity checks.
+    "ruff==0.17.2",
+]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["B", "C4", "C90", "E", "F", "I", "UP"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
