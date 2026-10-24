@@ -2,7 +2,10 @@
 name = "graph-microsoft"
 version = "0.1.0"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "azure-identity==1.26.0",
+    "msgraph-sdk==1.65.0",
+]
 
 [dependency-groups]
 dev = [

@@ -53,3 +53,11 @@ uv run pytest
 
 O Ruff aplica complexidade McCabe máxima 10. A configuração e as versões das
 ferramentas estão em `pyproject.toml` e `uv.lock`.
+
+## Microsoft Graph e SharePoint
+
+As dependências Python de runtime são `msgraph-sdk`, o SDK oficial do Microsoft
+Graph, e `azure-identity`, para autenticação com Microsoft Entra ID. O SDK
+permite iniciar chamadas aos endpoints de sites do SharePoint, enquanto
+`azure-identity` fornece credenciais para autenticar essas chamadas. As versões
+diretas e transitivas estão fixadas em `uv.lock`.
