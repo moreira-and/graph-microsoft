@@ -61,3 +61,20 @@ Graph, e `azure-identity`, para autenticação com Microsoft Entra ID. O SDK
 permite iniciar chamadas aos endpoints de sites do SharePoint, enquanto
 `azure-identity` fornece credenciais para autenticar essas chamadas. As versões
 diretas e transitivas estão fixadas em `uv.lock`.
+
+### Credenciais de integração
+
+Copie `.env.example` para `.env` e preencha os valores da app registration e do
+site de teste no seu tenant Microsoft Entra. Não há credenciais oficiais
+compartilhadas para usar: crie uma app registration própria e mantenha o segredo
+apenas em `.env`, que é ignorado pelo Git. Para ambientes fora do desenvolvimento
+local, prefira certificado ou identidade gerenciada em vez de segredo de cliente.
+
+Para testes que leem um site, prefira a permissão de aplicativo `Sites.Selected`
+e conceda explicitamente acesso de leitura somente ao site de teste. Essa
+permissão requer consentimento administrativo e uma concessão específica no
+site; sem ambas, a aplicação não terá acesso. Consulte a documentação oficial:
+
+- [Fluxo OAuth 2.0 de credenciais do cliente](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow)
+- [Permissões selecionadas para SharePoint e OneDrive](https://learn.microsoft.com/en-us/graph/permissions-selected-overview)
+- [Obter um site do SharePoint pelo Microsoft Graph](https://learn.microsoft.com/en-us/graph/api/site-get?view=graph-rest-1.0)
