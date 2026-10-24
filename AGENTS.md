@@ -8,6 +8,8 @@ coesão alta, acoplamento baixo e soluções simples.
 
 - Use nomes expressivos e fluxo de execução simples; evite duplicação,
   condicionais complexas e abstrações sem justificativa.
+- Use `uv` para gerenciar o ambiente, as dependências e as ferramentas Python
+  deste projeto.
 - Para cada linguagem de aplicação introduzida, configure um linter e
   formatador adequados, análise estática com limites de complexidade e testes
   automatizados. Execute essas verificações na integração contínua.

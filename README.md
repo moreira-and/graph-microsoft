@@ -26,3 +26,30 @@ Os arquivos de scaffolding derivados do Spec Kit são licenciados conforme
 `third_party/spec-kit/LICENSE`.
 
 Fonte: [github/spec-kit](https://github.com/github/spec-kit).
+
+## Ferramentas Python
+
+O projeto usa `uv` para gerenciar as ferramentas de qualidade Python. Instale as
+dependências de desenvolvimento e configure os hooks Git com:
+
+```bash
+uv sync --locked
+uv run pre-commit install
+```
+
+O hook pré-commit executa Ruff (lint e formatação) e mypy nos arquivos Python
+alterados. O hook pré-push executa a suíte completa com pytest. Como ainda não
+há testes no repositório, o pytest termina com código 5 até que sejam criados;
+adicione testes antes de fazer push com os hooks instalados.
+
+Para executar as verificações manualmente:
+
+```bash
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy <arquivos-python>
+uv run pytest
+```
+
+O Ruff aplica complexidade McCabe máxima 10. A configuração e as versões das
+ferramentas estão em `pyproject.toml` e `uv.lock`.
