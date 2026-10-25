@@ -35,7 +35,6 @@ Copie `.env.example` para `.env` e configure:
 | `SHAREPOINT_HOSTNAME` | Uma das opções de site | Hostname, como `contoso.sharepoint.com` |
 | `SHAREPOINT_SITE_PATH` | Junto com hostname | Caminho relativo, como `/sites/equipe` |
 | `GRAPH_SCOPE` | Não | Padrão: `https://graph.microsoft.com/.default` |
-| `DOWNLOAD_DIR` | Não | Diretório padrão de download; `--dest` prevalece |
 
 O site padrão pode ser informado por `SHAREPOINT_SITE_ID` ou pelo par
 `SHAREPOINT_HOSTNAME` e `SHAREPOINT_SITE_PATH`. Variáveis exportadas no ambiente
@@ -56,16 +55,12 @@ uv run python -m sharepoint_files ls --library <ID_DA_BIBLIOTECA>
 uv run python -m sharepoint_files ls --library <ID> --folder documentos/2025
 uv run python -m sharepoint_files find --library <ID> --name relatorio
 uv run python -m sharepoint_files find --library <ID> --path documentos/relatorio.docx
-uv run python -m sharepoint_files download --library <ID> --dest ./downloads documentos/relatorio.docx
-uv run python -m sharepoint_files download --library <ID> --dest ./downloads --overwrite documentos/relatorio.docx
 uv run python -m sharepoint_files download --library <ID> --volume main.analytics.files documentos/relatorio.docx
 ```
 
 Downloads são sequenciais, com limite de 20 arquivos por lote e 100 MB por
-arquivo. Sem `--overwrite`, arquivos existentes são ignorados. Cada item do
-lote é reportado individualmente; falhas não removem arquivos concluídos. O
-destino é validado para permanecer dentro do diretório configurado, e o arquivo
-final só aparece após a gravação completa.
+arquivo. O destino é sempre um volume Unity Catalog (`--volume`). Cada item do
+lote é reportado individualmente; falhas não removem arquivos concluídos.
 
 ### Jobs Databricks e volumes Unity Catalog
 
@@ -73,15 +68,9 @@ Em um Job Databricks, `--volume CATALOG.SCHEMA.VOLUME` grava em
 `/Volumes/<catalog>/<schema>/<volume>`. O volume deve existir e estar montado
 no compute compatível com Unity Catalog; a identidade usada pelo Job precisa
 de `USE CATALOG`, `USE SCHEMA` e `WRITE VOLUME`. O comando não cria o volume,
-não usa o destino local como fallback e não aceita `--dest` junto com
-`--volume`.
-
-O modo de volume sobrescreve arquivos existentes por padrão; `--overwrite` é
-exclusivo do modo local e será recusado com `--volume`. O conteúdo do SharePoint
-é baixado integralmente antes de abrir o arquivo de destino. Assim, uma falha
-no download remoto preserva o arquivo existente, mas uma falha depois do início
-da gravação pode deixar o destino incompleto. Diferentemente do modo local,
-essa gravação no volume não é atômica.
+sobrescreve arquivos existentes e só deixa o arquivo final visível após a
+gravação completa; em falha, o conteúdo anterior permanece e nenhum arquivo
+parcial fica no volume.
 
 Para implantar a CLI como Job via Databricks bundle, consulte o
 [quickstart de validação](specs/003-bundle-job-config/quickstart.md) e o

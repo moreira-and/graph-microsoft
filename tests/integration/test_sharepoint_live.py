@@ -13,7 +13,7 @@ from sharepoint_files.client import (
     load_config,
     read_env_file,
 )
-from sharepoint_files.downloads import Status, download_paths
+from sharepoint_files.downloads import Status, download_volume_paths
 from sharepoint_files.sharepoint import list_items, list_libraries, resolve_site
 
 pytestmark = pytest.mark.integration
@@ -47,7 +47,7 @@ def test_resolve_list_and_download_one_file(config: Config, tmp_path: Path) -> N
         files = [item for item in items if not item.is_folder]
         if not files:
             pytest.skip("A biblioteca de teste não tem arquivos na raiz")
-        report = await download_paths(
+        report = await download_volume_paths(
             client, libraries[0].id, [files[0].path], tmp_path
         )
         assert report.results[0].status is Status.DOWNLOADED

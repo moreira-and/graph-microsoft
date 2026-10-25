@@ -131,6 +131,11 @@ valor é uma lista JSON de argumentos da CLI, por exemplo:
 ["download", "--library", "<LIBRARY_ID>", "--volume", "<CATALOG>.<SCHEMA>.<VOLUME_NAME>", "<CAMINHO>"]
 ```
 
+O Job transfere somente os caminhos dessa lista explícita; nada fora dela é
+lido. Se um arquivo já existir no volume, ele é sobrescrito de forma atômica:
+em caso de falha, o conteúdo anterior permanece e nenhum arquivo parcial fica no
+volume.
+
 Os caminhos fazem parte da configuração do target; alterá-los requer atualizar
 os argumentos configurados e implantar novamente o bundle. O Job configura
 `AZURE_CLIENT_SECRET` com a referência ao scope durante a execução. O bundle

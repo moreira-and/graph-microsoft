@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from fakes import FakeClient, api_error, file_item, folder_item
+from fakes import FakeClient, api_error, file_item
 from msgraph.graph_service_client import GraphServiceClient
 
 from sharepoint_files.client import ErrorCategory, GraphToolError
@@ -14,8 +14,6 @@ from sharepoint_files.downloads import (
     DownloadRequest,
     Status,
     destination_for,
-    download_files,
-    download_paths,
     download_volume_paths,
     volume_root,
 )
@@ -94,185 +92,6 @@ def test_destination_rejects_symlink_pointing_outside(tmp_path: Path) -> None:
         destination_for("link.txt", base)
 
 
-def test_unsafe_name_in_batch_is_a_failure_and_writes_nothing_outside(
-    tmp_path: Path,
-) -> None:
-    base = tmp_path / "base"
-    client = FakeClient()
-    client.contents["1"] = [b"abc"]
-
-    report = run(download_files(graph(client), [request("1", "../fora.txt")], base))
-
-    assert report.results[0].status is Status.FAILED
-    assert not (tmp_path / "fora.txt").exists()
-    assert list(base.iterdir()) == []
-
-
-def test_download_writes_files_sequentially_in_order(tmp_path: Path) -> None:
-    client = FakeClient()
-    client.contents.update({"1": [b"um"], "2": [b"dois"]})
-
-    report = run(
-        download_files(
-            graph(client), [request("1", "a.txt"), request("2", "b.txt")], tmp_path
-        )
-    )
-
-    assert [r.status for r in report.results] == [Status.DOWNLOADED] * 2
-    assert (tmp_path / "a.txt").read_bytes() == b"um"
-    assert (tmp_path / "b.txt").read_bytes() == b"dois"
-    assert [c[2] for c in client.calls if c[0] == "item"] == ["1", "2"]
-
-
-def test_existing_file_is_skipped_without_overwrite(tmp_path: Path) -> None:
-    (tmp_path / "a.txt").write_bytes(b"original")
-    client = FakeClient()
-    client.contents["1"] = [b"novo"]
-
-    report = run(download_files(graph(client), [request("1", "a.txt")], tmp_path))
-
-    assert report.results[0].status is Status.SKIPPED
-    assert (tmp_path / "a.txt").read_bytes() == b"original"
-    assert [c for c in client.calls if c[0] == "item"] == []
-
-
-def test_existing_file_is_replaced_with_overwrite(tmp_path: Path) -> None:
-    (tmp_path / "a.txt").write_bytes(b"original")
-    client = FakeClient()
-    client.contents["1"] = [b"novo"]
-
-    report = run(
-        download_files(graph(client), [request("1", "a.txt")], tmp_path, overwrite=True)
-    )
-
-    assert report.results[0].status is Status.DOWNLOADED
-    assert (tmp_path / "a.txt").read_bytes() == b"novo"
-
-
-def test_duplicate_destination_in_batch_follows_the_overwrite_rule(
-    tmp_path: Path,
-) -> None:
-    client = FakeClient()
-    client.contents.update({"1": [b"primeiro"], "2": [b"segundo"]})
-    batch = [request("1", "a.txt"), request("2", "a.txt")]
-
-    skipped = run(download_files(graph(client), batch, tmp_path))
-    assert [r.status for r in skipped.results] == [Status.DOWNLOADED, Status.SKIPPED]
-    assert skipped.results[1].reason == "Destino já usado neste lote"
-    assert (tmp_path / "a.txt").read_bytes() == b"primeiro"
-
-    client.contents.update({"1": [b"primeiro"], "2": [b"segundo"]})
-    replaced = run(download_files(graph(client), batch, tmp_path, overwrite=True))
-    assert [r.status for r in replaced.results] == [Status.DOWNLOADED] * 2
-    assert (tmp_path / "a.txt").read_bytes() == b"segundo"
-
-
-def test_partial_failures_keep_completed_files_and_report_each_item(
-    tmp_path: Path,
-) -> None:
-    client = FakeClient()
-    client.contents.update({"1": [b"ok"], "2": [api_error(500)], "4": [b"fim"]})
-    batch = [
-        request("1", "ok.txt"),
-        request("2", "erro.txt"),
-        request("3", "grande.bin", MAX_FILE_BYTES + 1),
-        request("4", "fim.txt"),
-        request("5", "sem-tamanho.txt", None),
-    ]
-
-    report = run(download_files(graph(client), batch, tmp_path))
-
-    assert [r.status for r in report.results] == [
-        Status.DOWNLOADED,
-        Status.FAILED,
-        Status.FAILED,
-        Status.DOWNLOADED,
-        Status.FAILED,
-    ]
-    assert (tmp_path / "ok.txt").read_bytes() == b"ok"
-    assert (tmp_path / "fim.txt").read_bytes() == b"fim"
-    assert not (tmp_path / "erro.txt").exists()
-    assert report.count(Status.FAILED) == 3
-    assert "100 MB" in (report.results[2].reason or "")
-    assert "informado" in (report.results[4].reason or "")
-
-
-def test_batch_above_limit_is_refused_before_downloading(tmp_path: Path) -> None:
-    client = FakeClient()
-    batch = [request(str(i), f"{i}.txt") for i in range(MAX_BATCH + 1)]
-
-    with pytest.raises(GraphToolError):
-        run(download_files(graph(client), batch, tmp_path))
-
-    assert client.calls == []
-
-
-def test_failure_while_writing_leaves_no_final_or_temporary_file(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    client = FakeClient()
-    client.contents["1"] = [b"conteudo"]
-
-    def broken_replace(src: str, dst: Path) -> None:
-        raise OSError(28, "No space left on device")
-
-    monkeypatch.setattr(os, "replace", broken_replace)
-
-    report = run(download_files(graph(client), [request("1", "a.txt")], tmp_path))
-
-    assert report.results[0].status is Status.FAILED
-    assert "gravação" in (report.results[0].reason or "")
-    assert list(tmp_path.iterdir()) == []
-
-
-def test_report_and_reasons_never_expose_urls_or_tokens(tmp_path: Path) -> None:
-    client = FakeClient()
-    client.contents["1"] = [api_error(403)]
-    client.contents["2"] = [api_error(500)]
-
-    report = run(
-        download_files(
-            graph(client), [request("1", "a.txt"), request("2", "b.txt")], tmp_path
-        )
-    )
-
-    text = " ".join(str(r) for r in report.results)
-    assert SECRET_URL not in text
-    assert "token" not in text
-    assert "secret.example" not in text
-
-
-def test_download_paths_resolves_and_reports_individual_failures(
-    tmp_path: Path,
-) -> None:
-    client = FakeClient()
-    client.by_path["docs/a.txt"] = file_item("1", "a.txt")
-    client.by_path["docs"] = folder_item("2", "docs")
-    client.contents["1"] = [b"abc"]
-
-    report = run(
-        download_paths(
-            graph(client), "d1", ["docs/a.txt", "docs", "nao/existe.txt"], tmp_path
-        )
-    )
-
-    assert [r.status for r in report.results] == [
-        Status.DOWNLOADED,
-        Status.FAILED,
-        Status.FAILED,
-    ]
-    assert report.results[1].reason == "O item é uma pasta"
-    assert report.results[2].reason == "Arquivo não encontrado"
-    assert (tmp_path / "a.txt").read_bytes() == b"abc"
-
-
-def test_download_paths_refuses_large_batches(tmp_path: Path) -> None:
-    client = FakeClient()
-
-    with pytest.raises(GraphToolError):
-        run(download_paths(graph(client), "d1", ["a"] * (MAX_BATCH + 1), tmp_path))
-
-
 def test_volume_download_writes_and_overwrites_sequentially(tmp_path: Path) -> None:
     (tmp_path / "a.txt").write_bytes(b"old")
     client = FakeClient()
@@ -321,18 +140,65 @@ def test_volume_download_reports_write_errors(
     client.by_path["docs/a.txt"] = file_item("1", "a.txt")
     client.contents["1"] = [b"content"]
 
-    def fail_write(_: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
-        if mode == "wb":
-            raise OSError(13, "permission denied")
-        return original_open(_, mode, *args, **kwargs)
+    def fail_replace(*_: Any, **__: Any) -> None:
+        raise OSError(13, "permission denied")
 
-    original_open = Path.open
-    monkeypatch.setattr(Path, "open", fail_write)
+    monkeypatch.setattr(os, "replace", fail_replace)
 
     report = run(download_volume_paths(graph(client), "d1", ["docs/a.txt"], tmp_path))
 
     assert report.results[0].status is Status.FAILED
     assert "gravação" in (report.results[0].reason or "")
+
+
+def test_volume_download_failed_overwrite_keeps_previous_content_without_part(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "a.txt").write_bytes(b"original")
+    client = FakeClient()
+    client.by_path["docs/a.txt"] = file_item("1", "a.txt")
+    client.contents["1"] = [b"new-content"]
+
+    def fail_replace(*_: Any, **__: Any) -> None:
+        raise OSError(5, "input/output error")
+
+    monkeypatch.setattr(os, "replace", fail_replace)
+
+    report = run(download_volume_paths(graph(client), "d1", ["docs/a.txt"], tmp_path))
+
+    assert report.results[0].status is Status.FAILED
+    assert (tmp_path / "a.txt").read_bytes() == b"original"
+    assert [path.name for path in tmp_path.iterdir()] == ["a.txt"]
+
+
+def test_volume_download_writes_only_requested_paths(tmp_path: Path) -> None:
+    client = FakeClient()
+    client.by_path.update(
+        {
+            "docs/a.txt": file_item("1", "a.txt"),
+            "docs/b.txt": file_item("2", "b.txt"),
+        }
+    )
+    client.contents.update({"1": [b"only-a"], "2": [b"not-requested"]})
+
+    report = run(download_volume_paths(graph(client), "d1", ["docs/a.txt"], tmp_path))
+
+    assert [result.status for result in report.results] == [Status.DOWNLOADED]
+    assert [path.name for path in tmp_path.iterdir()] == ["a.txt"]
+    assert (tmp_path / "a.txt").read_bytes() == b"only-a"
+    assert client.contents["2"] == [b"not-requested"]
+
+
+def test_volume_download_missing_source_reports_path_and_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    client = FakeClient()
+
+    report = run(download_volume_paths(graph(client), "d1", ["docs/x.txt"], tmp_path))
+
+    assert report.results[0].status is Status.FAILED
+    assert "x.txt" in report.results[0].name
+    assert list(tmp_path.iterdir()) == []
 
 
 @pytest.mark.parametrize("size", [None, MAX_FILE_BYTES + 1])
@@ -410,3 +276,55 @@ def test_volume_download_rejects_invalid_destination_and_large_batch(
             )
         )
     assert client.calls == []
+
+
+def test_volume_download_partial_failures_keep_completed_files(
+    tmp_path: Path,
+) -> None:
+    client = FakeClient()
+    client.by_path.update(
+        {
+            "docs/ok.txt": file_item("1", "ok.txt"),
+            "docs/erro.txt": file_item("2", "erro.txt"),
+            "docs/fim.txt": file_item("3", "fim.txt"),
+        }
+    )
+    client.contents.update({"1": [b"ok"], "2": [api_error(500)], "3": [b"fim"]})
+
+    report = run(
+        download_volume_paths(
+            graph(client),
+            "d1",
+            ["docs/ok.txt", "docs/erro.txt", "docs/fim.txt"],
+            tmp_path,
+        )
+    )
+
+    assert [r.status for r in report.results] == [
+        Status.DOWNLOADED,
+        Status.FAILED,
+        Status.DOWNLOADED,
+    ]
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["fim.txt", "ok.txt"]
+
+
+def test_volume_report_never_exposes_urls_or_tokens(tmp_path: Path) -> None:
+    client = FakeClient()
+    client.by_path.update(
+        {
+            "docs/a.txt": file_item("1", "a.txt"),
+            "docs/b.txt": file_item("2", "b.txt"),
+        }
+    )
+    client.contents.update({"1": [api_error(403)], "2": [api_error(500)]})
+
+    report = run(
+        download_volume_paths(
+            graph(client), "d1", ["docs/a.txt", "docs/b.txt"], tmp_path
+        )
+    )
+
+    text = " ".join(str(r) for r in report.results)
+    assert SECRET_URL not in text
+    assert "token" not in text
+    assert "secret.example" not in text

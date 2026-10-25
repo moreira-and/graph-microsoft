@@ -30,7 +30,6 @@ def test_load_config_with_required_variables_uses_defaults() -> None:
     assert config.tenant_id == "tenant"
     assert config.scope == DEFAULT_SCOPE
     assert config.site_id == "site-1"
-    assert config.download_dir is None
 
 
 def test_load_config_reads_optional_variables() -> None:
@@ -39,7 +38,6 @@ def test_load_config_reads_optional_variables() -> None:
         "GRAPH_SCOPE": "custom/.default",
         "SHAREPOINT_HOSTNAME": "contoso.sharepoint.com",
         "SHAREPOINT_SITE_PATH": "/sites/team",
-        "DOWNLOAD_DIR": "/tmp/out",
     }
 
     config = load_config(env)
@@ -47,7 +45,6 @@ def test_load_config_reads_optional_variables() -> None:
     assert config.scope == "custom/.default"
     assert config.hostname == "contoso.sharepoint.com"
     assert config.site_path == "/sites/team"
-    assert str(config.download_dir) == "/tmp/out"
 
 
 @pytest.mark.parametrize(

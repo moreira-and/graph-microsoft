@@ -1,4 +1,4 @@
-"""Download sequencial e seguro de arquivos do SharePoint para um diretório local."""
+"""Transferência sequencial e segura de arquivos do SharePoint para um volume."""
 
 from __future__ import annotations
 
@@ -23,7 +23,6 @@ _WINDOWS_RESERVED_NAMES = {"CON", "PRN", "AUX", "NUL"} | {
 
 class Status(StrEnum):
     DOWNLOADED = "baixado"
-    SKIPPED = "ignorado"
     FAILED = "falha"
 
 
@@ -102,36 +101,6 @@ async def _fetch(client: GraphServiceClient, request: DownloadRequest) -> bytes:
     return content or b""
 
 
-async def _download_one(
-    client: GraphServiceClient,
-    request: DownloadRequest,
-    dest: Path,
-    overwrite: bool,
-    seen_targets: set[Path],
-) -> DownloadResult:
-    try:
-        target = destination_for(request.name, dest)
-        duplicate = target in seen_targets
-        seen_targets.add(target)
-        if request.size is None:
-            return _failed(request.name, "Tamanho do arquivo não informado")
-        if request.size > MAX_FILE_BYTES:
-            return _failed(request.name, "Arquivo acima do limite de 100 MB")
-        if target.exists() and not overwrite:
-            return DownloadResult(
-                request.name,
-                Status.SKIPPED,
-                target,
-                "Destino já usado neste lote" if duplicate else "Arquivo já existe",
-            )
-        _write_atomic(target, await _fetch(client, request))
-    except GraphToolError as exc:
-        return _failed(request.name, str(exc))
-    except OSError as exc:
-        return _failed(request.name, f"Erro de gravação: {exc.strerror}")
-    return DownloadResult(request.name, Status.DOWNLOADED, target)
-
-
 def volume_root(qualified_name: str) -> Path:
     """Resolve and validate a Unity Catalog volume name."""
     parts = qualified_name.split(".")
@@ -172,8 +141,7 @@ async def _download_volume_one(
         if request.size > MAX_FILE_BYTES:
             return _failed(request.name, "Arquivo acima do limite de 100 MB")
         content = await _fetch(client, request)
-        with target.open("wb") as destination:
-            destination.write(content)
+        _write_atomic(target, content)
     except GraphToolError as exc:
         return _failed(request.name, str(exc))
     except OSError as exc:
@@ -189,22 +157,6 @@ def _check_batch_size(size: int) -> None:
         raise GraphToolError(
             ErrorCategory.REQUEST, f"O lote excede o limite de {MAX_BATCH} arquivos"
         )
-
-
-async def download_files(
-    client: GraphServiceClient,
-    requests: Sequence[DownloadRequest],
-    dest: Path,
-    overwrite: bool = False,
-) -> DownloadReport:
-    _check_batch_size(len(requests))
-    dest.mkdir(parents=True, exist_ok=True)
-    seen_targets: set[Path] = set()
-    results = [
-        await _download_one(client, request, dest, overwrite, seen_targets)
-        for request in requests
-    ]
-    return DownloadReport(tuple(results))
 
 
 async def resolve_request(
@@ -272,26 +224,4 @@ async def download_volume_paths(
             )
         else:
             results.append(await _download_volume_one(client, item, resolved_root))
-    return DownloadReport(tuple(results))
-
-
-async def download_paths(
-    client: GraphServiceClient,
-    drive_id: str,
-    paths: Sequence[str],
-    dest: Path,
-    overwrite: bool = False,
-) -> DownloadReport:
-    """Resolve e baixa cada caminho em ordem, sem perder os resultados anteriores."""
-    _check_batch_size(len(paths))
-    dest.mkdir(parents=True, exist_ok=True)
-    results: list[DownloadResult] = []
-    seen_targets: set[Path] = set()
-    for resolved in await resolve_requests(client, drive_id, paths):
-        if isinstance(resolved, DownloadResult):
-            results.append(resolved)
-        else:
-            results.append(
-                await _download_one(client, resolved, dest, overwrite, seen_targets)
-            )
     return DownloadReport(tuple(results))

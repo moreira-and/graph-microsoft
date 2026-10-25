@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from azure.core.exceptions import ClientAuthenticationError
 from fakes import FakeClient, drive_page, file_item, folder_item, page
 from msgraph.generated.models.drive import Drive
 from msgraph.generated.models.site import Site as GraphSite
@@ -114,59 +115,6 @@ def test_find_requires_name_or_path() -> None:
     assert error.value.code == 2
 
 
-def test_download_reports_items_and_exit_code_for_failures(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    client = FakeClient()
-    client.by_path["a.txt"] = file_item("1", "a.txt")
-    client.contents["1"] = [b"abc"]
-
-    code = main(
-        ["download", "--library", "d1", "--dest", str(tmp_path), "a.txt", "falta.txt"],
-        env=ENV,
-        client_factory=factory_for(client),
-    )
-
-    output = capsys.readouterr().out
-    assert code == 1
-    assert "baixado\ta.txt" in output
-    assert "falha\tfalta.txt" in output
-    assert "Total: 1 baixado, 0 ignorado, 1 falha" in output
-    assert (tmp_path / "a.txt").read_bytes() == b"abc"
-
-
-def test_download_skips_existing_and_overwrites_on_request(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    (tmp_path / "a.txt").write_bytes(b"velho")
-    client = FakeClient()
-    client.by_path["a.txt"] = file_item("1", "a.txt")
-    base = ["download", "--library", "d1", "--dest", str(tmp_path)]
-
-    code = main([*base, "a.txt"], env=ENV, client_factory=factory_for(client))
-    assert code == 0
-    assert "ignorado\ta.txt" in capsys.readouterr().out
-    assert (tmp_path / "a.txt").read_bytes() == b"velho"
-
-    client.contents["1"] = [b"novo"]
-    code = main(
-        [*base, "--overwrite", "a.txt"], env=ENV, client_factory=factory_for(client)
-    )
-    assert code == 0
-    assert (tmp_path / "a.txt").read_bytes() == b"novo"
-
-
-def test_download_requires_destination(capsys: pytest.CaptureFixture[str]) -> None:
-    code = main(
-        ["download", "--library", "d1", "a.txt"],
-        env=ENV,
-        client_factory=factory_for(FakeClient()),
-    )
-
-    assert code == 1
-    assert "DOWNLOAD_DIR" in capsys.readouterr().err
-
-
 def test_download_volume_uses_configured_volume_root(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -202,53 +150,7 @@ def test_download_volume_uses_configured_volume_root(
     assert captured["drive_id"] == "d1"
     assert captured["paths"] == ["reports/a.csv"]
     assert captured["dest"] == Path("/Volumes/main/analytics/files")
-    assert "Total: 0 baixado, 0 ignorado, 0 falha" in capsys.readouterr().out
-    assert client.calls == []
-
-
-def test_download_rejects_local_and_volume_destinations(
-    tmp_path: Path,
-) -> None:
-    with pytest.raises(SystemExit) as error:
-        main(
-            [
-                "download",
-                "--library",
-                "d1",
-                "--dest",
-                str(tmp_path),
-                "--volume",
-                "main.analytics.files",
-                "a.csv",
-            ],
-            env=ENV,
-            client_factory=factory_for(FakeClient()),
-        )
-
-    assert error.value.code == 2
-
-
-def test_download_rejects_overwrite_for_volume_mode(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    client = FakeClient()
-
-    code = main(
-        [
-            "download",
-            "--library",
-            "d1",
-            "--volume",
-            "main.analytics.files",
-            "--overwrite",
-            "a.csv",
-        ],
-        env=ENV,
-        client_factory=factory_for(client),
-    )
-
-    assert code == 1
-    assert "--overwrite" in capsys.readouterr().err
+    assert "Total: 0 baixado, 0 falha" in capsys.readouterr().out
     assert client.calls == []
 
 
@@ -273,3 +175,37 @@ def test_download_rejects_invalid_volume_name(
     assert code == 1
     assert "catalog.schema.volume" in capsys.readouterr().err
     assert client.calls == []
+
+
+def test_download_volume_auth_failure_does_not_leak_secret(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import sharepoint_files.cli as cli
+
+    secret = "sentinel-client-secret-value"
+    monkeypatch.setattr(cli, "volume_root", lambda _: tmp_path)
+    client = FakeClient()
+    client.by_path["reports/a.csv"] = ClientAuthenticationError(
+        f"invalid_client: {secret}"
+    )
+
+    code = main(
+        [
+            "download",
+            "--library",
+            "d1",
+            "--volume",
+            "main.analytics.files",
+            "reports/a.csv",
+        ],
+        env={**ENV, "AZURE_CLIENT_SECRET": secret},
+        client_factory=factory_for(client),
+    )
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "autenticação" in captured.out
+    assert secret not in captured.out + captured.err
+    assert list(tmp_path.iterdir()) == []

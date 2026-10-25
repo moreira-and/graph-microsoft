@@ -16,7 +16,6 @@ from sharepoint_files.client import (
     DOWNLOAD_TIMEOUT,
     LIST_TIMEOUT,
     Config,
-    ErrorCategory,
     GraphToolError,
     create_client,
     load_config,
@@ -24,7 +23,6 @@ from sharepoint_files.client import (
 )
 from sharepoint_files.downloads import (
     Status,
-    download_paths,
     download_volume_paths,
     volume_root,
 )
@@ -64,10 +62,7 @@ def _build_parser() -> argparse.ArgumentParser:
     target.add_argument("--path")
 
     download = commands.choices["download"]
-    destination = download.add_mutually_exclusive_group()
-    destination.add_argument("--dest", type=Path)
-    destination.add_argument("--volume", metavar="CATALOG.SCHEMA.VOLUME")
-    download.add_argument("--overwrite", action="store_true")
+    download.add_argument("--volume", required=True, metavar="CATALOG.SCHEMA.VOLUME")
     download.add_argument("paths", nargs="+", metavar="CAMINHO")
     return parser
 
@@ -133,25 +128,9 @@ async def _find(
 async def _download(
     args: argparse.Namespace, config: Config, client: GraphServiceClient
 ) -> int:
-    if args.volume:
-        if args.overwrite:
-            raise GraphToolError(
-                ErrorCategory.CONFIGURATION,
-                "--overwrite é só para o modo local; volume sobrescreve por padrão",
-            )
-        report = await download_volume_paths(
-            client, args.library, args.paths, volume_root(args.volume)
-        )
-    else:
-        dest = args.dest or config.download_dir
-        if dest is None:
-            raise GraphToolError(
-                ErrorCategory.CONFIGURATION,
-                "Informe --dest ou defina DOWNLOAD_DIR",
-            )
-        report = await download_paths(
-            client, args.library, args.paths, dest, args.overwrite
-        )
+    report = await download_volume_paths(
+        client, args.library, args.paths, volume_root(args.volume)
+    )
     for result in report.results:
         print(f"{result.status}\t{result.name}\t{result.reason or result.path or ''}")
     counts = ", ".join(f"{report.count(s)} {s}" for s in Status)

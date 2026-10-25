@@ -55,7 +55,6 @@ class Config:
     site_id: str | None = None
     hostname: str | None = None
     site_path: str | None = None
-    download_dir: Path | None = None
 
 
 def load_config(env: Mapping[str, str]) -> Config:
@@ -73,7 +72,6 @@ def load_config(env: Mapping[str, str]) -> Config:
             ErrorCategory.CONFIGURATION,
             "Defina SHAREPOINT_SITE_ID ou SHAREPOINT_HOSTNAME e SHAREPOINT_SITE_PATH",
         )
-    download_dir = env.get("DOWNLOAD_DIR", "").strip()
     return Config(
         tenant_id=env["AZURE_TENANT_ID"].strip(),
         client_id=env["AZURE_CLIENT_ID"].strip(),
@@ -82,7 +80,6 @@ def load_config(env: Mapping[str, str]) -> Config:
         site_id=site_id,
         hostname=hostname,
         site_path=site_path,
-        download_dir=Path(download_dir) if download_dir else None,
     )
 
 
