@@ -208,6 +208,9 @@ tempCodeRunnerFile.py
 # Ruff stuff:
 .ruff_cache/
 
+# Databricks bundle deployment state
+.databricks/
+
 # PyPI configuration file
 .pypirc
 
@@ -218,3 +221,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# cache
+.ruff_cache
+.pytest_cache
+.mypy_cache

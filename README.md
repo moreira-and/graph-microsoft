@@ -40,6 +40,8 @@ Copie `.env.example` para `.env` e configure:
 O site padrão pode ser informado por `SHAREPOINT_SITE_ID` ou pelo par
 `SHAREPOINT_HOSTNAME` e `SHAREPOINT_SITE_PATH`. Variáveis exportadas no ambiente
 têm precedência sobre `.env`. Nunca versione credenciais.
+Para configurar as credenciais de um Job Databricks implantado por bundle,
+consulte o [guia de configuração de credenciais](docs/secret_config/credential-setup.md).
 
 ## Uso
 
@@ -80,6 +82,13 @@ exclusivo do modo local e será recusado com `--volume`. O conteúdo do SharePoi
 no download remoto preserva o arquivo existente, mas uma falha depois do início
 da gravação pode deixar o destino incompleto. Diferentemente do modo local,
 essa gravação no volume não é atômica.
+
+Para implantar a CLI como Job via Databricks bundle, consulte o
+[quickstart de validação](specs/003-bundle-job-config/quickstart.md) e o
+[guia operacional de credenciais](docs/secret_config/credential-setup.md).
+Os targets iniciais `dev` e `test` exigem configurações próprias de workspace,
+compute, origem, volume e referência a secret scope; o bundle não contém
+valores reais de credenciais.
 
 ## Testes e qualidade
 

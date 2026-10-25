@@ -1,0 +1,15 @@
+resources:
+  jobs:
+    volume_smoke_test_job:
+      name: sharepoint-volume-smoke-test
+      tasks:
+        - task_key: write_and_verify_test_file
+          environment_key: serverless
+          notebook_task:
+            notebook_path: ../notebooks/test_volume.py
+            base_parameters:
+              volume: ${var.volume_catalog}.${var.volume_schema}.${var.volume_name}
+      environments:
+        - environment_key: serverless
+          spec:
+            environment_version: "5"

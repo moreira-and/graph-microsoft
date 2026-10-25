@@ -1,0 +1,28 @@
+resources:
+  jobs:
+    sharepoint_download:
+      name: sharepoint-download
+      run_as:
+        service_principal_name: ${var.job_service_principal_name}
+      tasks:
+        - task_key: download
+          job_cluster_key: sharepoint_job_cluster
+          python_wheel_task:
+            package_name: graph-microsoft
+            entry_point: sharepoint-files
+            parameters: ${var.download_parameters}
+          libraries:
+            - whl: ../dist/*.whl
+      job_clusters:
+        - job_cluster_key: sharepoint_job_cluster
+          new_cluster:
+            spark_version: ${var.spark_version}
+            node_type_id: ${var.node_type_id}
+            num_workers: 1
+            data_security_mode: SINGLE_USER
+            spark_env_vars:
+              AZURE_TENANT_ID: ${var.azure_tenant_id}
+              AZURE_CLIENT_ID: ${var.azure_client_id}
+              AZURE_CLIENT_SECRET: ${var.client_secret_reference}
+              SHAREPOINT_SITE_ID: ${var.sharepoint_site_id}
+              GRAPH_SCOPE: https://graph.microsoft.com/.default

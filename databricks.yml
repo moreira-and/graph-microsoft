@@ -1,0 +1,43 @@
+bundle:
+  name: sharepoint-files
+
+include:
+  - resources/*.yml
+
+artifacts:
+  default:
+    type: whl
+    path: .
+    build: uv build --wheel
+
+variables:
+  spark_version:
+    description: Databricks Runtime with Unity Catalog volumes and Python 3.12+
+  node_type_id:
+    description: Approved node type for the Job cluster
+  job_service_principal_name:
+    description: Application ID of the service principal that runs this target's Job
+  azure_tenant_id:
+    description: Microsoft Entra tenant ID for this target
+  azure_client_id:
+    description: Microsoft Entra app registration client ID for this target
+  client_secret_reference:
+    description: Databricks secret reference, not the client secret value
+  sharepoint_site_id:
+    description: SharePoint site ID permitted for this target
+  volume_catalog:
+    description: Existing Unity Catalog catalog where the bundle creates the managed volume
+  volume_schema:
+    description: Existing Unity Catalog schema where the bundle creates the managed volume
+  volume_name:
+    description: Managed volume name created by the bundle
+  download_parameters:
+    description: JSON array with download, library, qualified bundle volume, and source-path arguments
+    type: complex
+
+targets:
+  dev:
+    default: true
+    mode: development
+  test:
+    mode: development

@@ -1,0 +1,15 @@
+resources:
+  volumes:
+    sharepoint_files:
+      name: ${var.volume_name}
+      catalog_name: ${var.volume_catalog}
+      schema_name: ${var.volume_schema}
+      volume_type: MANAGED
+      comment: Managed Unity Catalog volume for SharePoint file downloads
+      grants:
+        - principal: ${var.job_service_principal_name}
+          privileges:
+            - READ_VOLUME
+            - WRITE_VOLUME
+      lifecycle:
+        prevent_destroy: true

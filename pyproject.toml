@@ -11,6 +11,9 @@ dependencies = [
     "msgraph-sdk==1.65.0",
 ]
 
+[project.scripts]
+sharepoint-files = "sharepoint_files.cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
