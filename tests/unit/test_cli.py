@@ -8,6 +8,7 @@ from msgraph.generated.models.site import Site as GraphSite
 
 from sharepoint_files.cli import main
 from sharepoint_files.client import Config
+from sharepoint_files.downloads import DownloadReport
 
 ENV = {
     "AZURE_TENANT_ID": "t",
@@ -164,3 +165,111 @@ def test_download_requires_destination(capsys: pytest.CaptureFixture[str]) -> No
 
     assert code == 1
     assert "DOWNLOAD_DIR" in capsys.readouterr().err
+
+
+def test_download_volume_uses_configured_volume_root(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import sharepoint_files.cli as cli
+
+    captured: dict[str, Any] = {}
+
+    async def download_to_volume(
+        client: Any, drive_id: str, paths: list[str], dest: Path
+    ) -> DownloadReport:
+        captured.update(client=client, drive_id=drive_id, paths=paths, dest=dest)
+        return DownloadReport(())
+
+    monkeypatch.setattr(cli, "download_volume_paths", download_to_volume)
+    client = FakeClient()
+
+    code = main(
+        [
+            "download",
+            "--library",
+            "d1",
+            "--volume",
+            "main.analytics.files",
+            "reports/a.csv",
+        ],
+        env=ENV,
+        client_factory=factory_for(client),
+    )
+
+    assert code == 0
+    assert captured["drive_id"] == "d1"
+    assert captured["paths"] == ["reports/a.csv"]
+    assert captured["dest"] == Path("/Volumes/main/analytics/files")
+    assert "Total: 0 baixado, 0 ignorado, 0 falha" in capsys.readouterr().out
+    assert client.calls == []
+
+
+def test_download_rejects_local_and_volume_destinations(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(SystemExit) as error:
+        main(
+            [
+                "download",
+                "--library",
+                "d1",
+                "--dest",
+                str(tmp_path),
+                "--volume",
+                "main.analytics.files",
+                "a.csv",
+            ],
+            env=ENV,
+            client_factory=factory_for(FakeClient()),
+        )
+
+    assert error.value.code == 2
+
+
+def test_download_rejects_overwrite_for_volume_mode(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeClient()
+
+    code = main(
+        [
+            "download",
+            "--library",
+            "d1",
+            "--volume",
+            "main.analytics.files",
+            "--overwrite",
+            "a.csv",
+        ],
+        env=ENV,
+        client_factory=factory_for(client),
+    )
+
+    assert code == 1
+    assert "--overwrite" in capsys.readouterr().err
+    assert client.calls == []
+
+
+def test_download_rejects_invalid_volume_name(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    client = FakeClient()
+
+    code = main(
+        [
+            "download",
+            "--library",
+            "d1",
+            "--volume",
+            "main..files",
+            "a.csv",
+        ],
+        env=ENV,
+        client_factory=factory_for(client),
+    )
+
+    assert code == 1
+    assert "catalog.schema.volume" in capsys.readouterr().err
+    assert client.calls == []

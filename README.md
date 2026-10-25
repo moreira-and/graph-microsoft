@@ -56,6 +56,7 @@ uv run python -m sharepoint_files find --library <ID> --name relatorio
 uv run python -m sharepoint_files find --library <ID> --path documentos/relatorio.docx
 uv run python -m sharepoint_files download --library <ID> --dest ./downloads documentos/relatorio.docx
 uv run python -m sharepoint_files download --library <ID> --dest ./downloads --overwrite documentos/relatorio.docx
+uv run python -m sharepoint_files download --library <ID> --volume main.analytics.files documentos/relatorio.docx
 ```
 
 Downloads são sequenciais, com limite de 20 arquivos por lote e 100 MB por
@@ -63,6 +64,22 @@ arquivo. Sem `--overwrite`, arquivos existentes são ignorados. Cada item do
 lote é reportado individualmente; falhas não removem arquivos concluídos. O
 destino é validado para permanecer dentro do diretório configurado, e o arquivo
 final só aparece após a gravação completa.
+
+### Jobs Databricks e volumes Unity Catalog
+
+Em um Job Databricks, `--volume CATALOG.SCHEMA.VOLUME` grava em
+`/Volumes/<catalog>/<schema>/<volume>`. O volume deve existir e estar montado
+no compute compatível com Unity Catalog; a identidade usada pelo Job precisa
+de `USE CATALOG`, `USE SCHEMA` e `WRITE VOLUME`. O comando não cria o volume,
+não usa o destino local como fallback e não aceita `--dest` junto com
+`--volume`.
+
+O modo de volume sobrescreve arquivos existentes por padrão; `--overwrite` é
+exclusivo do modo local e será recusado com `--volume`. O conteúdo do SharePoint
+é baixado integralmente antes de abrir o arquivo de destino. Assim, uma falha
+no download remoto preserva o arquivo existente, mas uma falha depois do início
+da gravação pode deixar o destino incompleto. Diferentemente do modo local,
+essa gravação no volume não é atômica.
 
 ## Testes e qualidade
 
@@ -82,6 +99,14 @@ uv run ruff format --check
 uv run mypy
 uv run pre-commit run --all-files
 ```
+
+O teste `tests/integration/test_databricks_volume.py` também é opt-in e deve
+rodar em compute Databricks com acesso a um volume e a um arquivo SharePoint de
+teste dedicado. Configure `DATABRICKS_TEST_VOLUME`,
+`DATABRICKS_TEST_SHAREPOINT_LIBRARY_ID` e
+`DATABRICKS_TEST_SHAREPOINT_FILE_PATH`; mantenha as credenciais em segredos do
+Job. O teste não executa fora do Databricks com um volume disponível e remove
+somente o arquivo de destino dedicado criado por ele.
 
 O workflow GitHub Actions executa sincronização bloqueada de dependências, Ruff,
 mypy e pytest.

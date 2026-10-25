@@ -33,6 +33,7 @@ class DownloadRequest:
     item_id: str
     name: str
     size: int | None
+    source_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -131,6 +132,58 @@ async def _download_one(
     return DownloadResult(request.name, Status.DOWNLOADED, target)
 
 
+def volume_root(qualified_name: str) -> Path:
+    """Resolve and validate a Unity Catalog volume name."""
+    parts = qualified_name.split(".")
+    if len(parts) != 3 or any(
+        not part or part in {".", ".."} or any(char in part for char in "/\\\0")
+        for part in parts
+    ):
+        raise GraphToolError(
+            ErrorCategory.CONFIGURATION,
+            "Volume inválido; informe catalog.schema.volume",
+        )
+    return Path("/Volumes", *parts)
+
+
+def _validate_volume_root(root: Path) -> Path:
+    try:
+        resolved = root.resolve(strict=True)
+    except (OSError, RuntimeError):
+        raise GraphToolError(
+            ErrorCategory.CONFIGURATION,
+            "Volume não encontrado ou indisponível",
+        ) from None
+    if not resolved.is_dir():
+        raise GraphToolError(
+            ErrorCategory.CONFIGURATION,
+            "O destino do volume não é um diretório disponível",
+        )
+    return resolved
+
+
+async def _download_volume_one(
+    client: GraphServiceClient, request: DownloadRequest, root: Path
+) -> DownloadResult:
+    try:
+        target = destination_for(request.name, root)
+        if request.size is None:
+            return _failed(request.name, "Tamanho do arquivo não informado")
+        if request.size > MAX_FILE_BYTES:
+            return _failed(request.name, "Arquivo acima do limite de 100 MB")
+        content = await _fetch(client, request)
+        with target.open("wb") as destination:
+            destination.write(content)
+    except GraphToolError as exc:
+        return _failed(request.name, str(exc))
+    except OSError as exc:
+        return _failed(
+            request.name,
+            f"Erro de gravação no volume: {exc.strerror or type(exc).__name__}",
+        )
+    return DownloadResult(request.name, Status.DOWNLOADED, target)
+
+
 def _check_batch_size(size: int) -> None:
     if size > MAX_BATCH:
         raise GraphToolError(
@@ -167,13 +220,59 @@ async def resolve_request(
     item = matches[0]
     if item.is_folder:
         return _failed(path, "O item é uma pasta")
-    return DownloadRequest(drive_id, item.id, item.name, item.size)
+    return DownloadRequest(drive_id, item.id, item.name, item.size, path)
 
 
 async def resolve_requests(
     client: GraphServiceClient, drive_id: str, paths: Sequence[str]
 ) -> list[DownloadRequest | DownloadResult]:
     return [await resolve_request(client, drive_id, path) for path in paths]
+
+
+async def download_volume_paths(
+    client: GraphServiceClient,
+    drive_id: str,
+    paths: Sequence[str],
+    root: Path,
+) -> DownloadReport:
+    """Resolve the batch first, rejects name collisions, then writes to a volume."""
+    _check_batch_size(len(paths))
+    resolved_root = _validate_volume_root(root)
+    resolved_requests = await resolve_requests(client, drive_id, paths)
+
+    name_counts: dict[str, int] = {}
+    for item in resolved_requests:
+        if isinstance(item, DownloadRequest):
+            name_counts[item.name] = name_counts.get(item.name, 0) + 1
+    conflicts = {
+        item.name
+        for item in resolved_requests
+        if isinstance(item, DownloadRequest) and name_counts[item.name] > 1
+    }
+    conflict_paths = {
+        name: [
+            item.source_path or item.name
+            for item in resolved_requests
+            if isinstance(item, DownloadRequest) and item.name == name
+        ]
+        for name in conflicts
+    }
+
+    results: list[DownloadResult] = []
+    for item in resolved_requests:
+        if isinstance(item, DownloadResult):
+            results.append(item)
+        elif item.name in conflicts:
+            sources = ", ".join(conflict_paths[item.name])
+            results.append(
+                _failed(
+                    item.name,
+                    f"Nome de destino duplicado; caminhos conflitantes: {sources}",
+                )
+            )
+        else:
+            results.append(await _download_volume_one(client, item, resolved_root))
+    return DownloadReport(tuple(results))
 
 
 async def download_paths(

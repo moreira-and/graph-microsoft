@@ -55,4 +55,6 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 pythonpath = ["src"]
 addopts = "-m 'not integration'"
-markers = ["integration: acessa o SharePoint real; exige .env local (opt-in)"]
+markers = [
+    "integration: acessa serviços reais; exige configuração local ou Databricks (opt-in)",
+]
