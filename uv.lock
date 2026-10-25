@@ -701,9 +701,10 @@ wheels = [
 [[package]]
 name = "graph-microsoft"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "azure-identity" },
+    { name = "httpx" },
     { name = "msgraph-sdk" },
 ]
 
@@ -718,6 +719,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "azure-identity", specifier = "==1.26.0" },
+    { name = "httpx", specifier = "==0.28.1" },
     { name = "msgraph-sdk", specifier = "==1.65.0" },
 ]
 

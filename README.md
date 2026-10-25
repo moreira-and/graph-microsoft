@@ -1,85 +1,87 @@
 # graph-microsoft
 
-Projeto Python para consultar sites do SharePoint e arquivos via Microsoft
-Graph. O repositório contém a configuração inicial do SDK, autenticação Entra
-ID e ferramentas de qualidade. As operações de consulta e download ainda não
-estão implementadas; não há comando de aplicação para iniciar neste estágio.
+Ferramenta Python de leitura para listar, localizar e baixar arquivos de um site
+SharePoint usando Microsoft Graph e autenticação app-only no Microsoft Entra ID.
+O acesso deve usar `Sites.Selected` com uma concessão de leitura explícita ao
+site de teste. A ferramenta não faz upload nem altera conteúdo do SharePoint.
 
-## Dependências
+## Requisitos
 
-As dependências de runtime estão declaradas em `pyproject.toml` e travadas em
-`uv.lock`:
+- Python 3.12 ou superior
+- [`uv`](https://docs.astral.sh/uv/)
+- App registration com `Sites.Selected`, consentimento administrativo e
+  concessão de leitura no site desejado
 
-| Dependência | Uso |
-| --- | --- |
-| `msgraph-sdk` | Cliente oficial tipado para chamar a API Microsoft Graph, incluindo recursos de SharePoint. |
-| `azure-identity` | Credenciais Microsoft Entra ID compatíveis com o cliente Graph. |
-
-As ferramentas de desenvolvimento ficam no grupo `dev`:
-
-| Dependência | Uso |
-| --- | --- |
-| `ruff` | Lint, formatação e limite de complexidade McCabe 10. |
-| `mypy` | Verificação estática de tipos em modo estrito. |
-| `pytest` | Testes automatizados. |
-| `pre-commit` | Instala e executa os hooks Git locais. |
-
-## Como iniciar
-
-Requisitos: Python 3.12 ou superior e [`uv`](https://docs.astral.sh/uv/).
-
-Instale as dependências travadas e configure os hooks:
+Instale as dependências travadas:
 
 ```bash
 uv sync --locked
-uv run pre-commit install
 ```
 
-O hook de pré-commit executa Ruff e mypy nos arquivos Python alterados. O hook
-de pré-push executa a suíte pytest. Para rodar as verificações manualmente:
+O pacote usa `msgraph-sdk` e `azure-identity`; `httpx` é declarada diretamente
+para configurar os timeouts do cliente HTTP. Hatchling instala o pacote local em
+modo editável para habilitar `uv run python -m sharepoint_files`.
+
+## Configuração
+
+Copie `.env.example` para `.env` e configure:
+
+| Variável | Obrigatória | Uso |
+|---|---|---|
+| `AZURE_TENANT_ID` | Sim | Tenant Microsoft Entra ID |
+| `AZURE_CLIENT_ID` | Sim | ID da aplicação |
+| `AZURE_CLIENT_SECRET` | Sim | Segredo da aplicação |
+| `SHAREPOINT_SITE_ID` | Uma das opções de site | ID do site padrão |
+| `SHAREPOINT_HOSTNAME` | Uma das opções de site | Hostname, como `contoso.sharepoint.com` |
+| `SHAREPOINT_SITE_PATH` | Junto com hostname | Caminho relativo, como `/sites/equipe` |
+| `GRAPH_SCOPE` | Não | Padrão: `https://graph.microsoft.com/.default` |
+| `DOWNLOAD_DIR` | Não | Diretório padrão de download; `--dest` prevalece |
+
+O site padrão pode ser informado por `SHAREPOINT_SITE_ID` ou pelo par
+`SHAREPOINT_HOSTNAME` e `SHAREPOINT_SITE_PATH`. Variáveis exportadas no ambiente
+têm precedência sobre `.env`. Nunca versione credenciais.
+
+## Uso
+
+Os comandos usam o site padrão configurado, exceto quando `site` ou
+`libraries` recebem opções explícitas de site.
 
 ```bash
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy tests
+uv run python -m sharepoint_files site
+uv run python -m sharepoint_files site --hostname contoso.sharepoint.com --site-path /sites/equipe
+uv run python -m sharepoint_files libraries
+uv run python -m sharepoint_files ls --library <ID_DA_BIBLIOTECA>
+uv run python -m sharepoint_files ls --library <ID> --folder documentos/2025
+uv run python -m sharepoint_files find --library <ID> --name relatorio
+uv run python -m sharepoint_files find --library <ID> --path documentos/relatorio.docx
+uv run python -m sharepoint_files download --library <ID> --dest ./downloads documentos/relatorio.docx
+uv run python -m sharepoint_files download --library <ID> --dest ./downloads --overwrite documentos/relatorio.docx
+```
+
+Downloads são sequenciais, com limite de 20 arquivos por lote e 100 MB por
+arquivo. Sem `--overwrite`, arquivos existentes são ignorados. Cada item do
+lote é reportado individualmente; falhas não removem arquivos concluídos. O
+destino é validado para permanecer dentro do diretório configurado, e o arquivo
+final só aparece após a gravação completa.
+
+## Testes e qualidade
+
+Os testes padrão não usam rede nem credenciais. Integrações reais são opt-in:
+
+```bash
 uv run pytest
+uv run pytest -m integration
 ```
 
-Atualmente, os testes verificam a disponibilidade dos imports do SDK e da
-credencial Entra; eles não acessam um tenant ou site SharePoint real.
-
-## Configuração de integração
-
-Copie `.env.example` para `.env` e preencha os valores de uma app registration
-e de um site de teste no seu próprio tenant Microsoft Entra. O `.env` é
-ignorado pelo Git. Não há credenciais compartilhadas; não versione segredos.
-
-Para integração de leitura, prefira `Sites.Selected` e conceda à aplicação
-acesso somente ao site de teste. A configuração dessa permissão exige
-consentimento administrativo e uma concessão explícita no site.
-
-Quando houver comandos de aplicação ou testes de integração que leiam o `.env`,
-carregue-o explicitamente, por exemplo com `uv run --env-file .env ...`.
-Nenhuma chamada real ao Microsoft Graph está implementada ainda.
-
-Documentação oficial:
-
-- [SDK Microsoft Graph para Python](https://github.com/microsoftgraph/msgraph-sdk-python)
-- [Fluxo OAuth 2.0 de credenciais do cliente](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-client-creds-grant-flow)
-- [Permissões selecionadas para SharePoint e OneDrive](https://learn.microsoft.com/en-us/graph/permissions-selected-overview)
-- [Obter um site do SharePoint pelo Microsoft Graph](https://learn.microsoft.com/en-us/graph/api/site-get?view=graph-rest-1.0)
-
-## Spec Kit
-
-O repositório usa [GitHub Spec Kit](https://github.com/github/spec-kit) com a
-integração GitHub Copilot. Os artefatos compartilhados ficam em `.specify/`;
-as skills ficam em `.github/skills/`. Instale o CLI separadamente:
+O teste de integração lê `.env` e pode ser ignorado se credenciais e site não
+estiverem configurados. Verificações usadas na CI e nos hooks:
 
 ```bash
-uv tool install specify-cli
-specify init --here --force --integration copilot
+uv run ruff check
+uv run ruff format --check
+uv run mypy
+uv run pre-commit run --all-files
 ```
 
-Use `/speckit-specify`, `/speckit-plan`, `/speckit-tasks` e
-`/speckit-implement` para o fluxo de especificação. Revise os arquivos
-gerenciados e conflitos antes de confirmar uma inicialização com `--force`.
+O workflow GitHub Actions executa sincronização bloqueada de dependências, Ruff,
+mypy e pytest.
